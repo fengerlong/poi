@@ -9,15 +9,21 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import javax.servlet.http.HttpServletResponse;
+import java.io.BufferedInputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URL;
 import java.net.URLEncoder;
 import java.util.*;
 
 /**
  * poi  excel 工具类封装
+ *  此封装仍然存在的问题是
+ *  1. 如何判断路径的不正确
+ *  2. 如何处理excel中的空格行
  */
 public class ExcelUtil {
 
@@ -131,6 +137,24 @@ public class ExcelUtil {
     }
 
     /**
+     * 利用反射获取类当中的方法，从而获取应该创建的表头的信息
+     * @param clz
+     * @return
+     */
+    private  List<String> getHeaderListByName(Class clz,List<String> names) {
+        List<String> list = new LinkedList<>();
+        List<ExcelHeader> headers = getHeaderList(clz);
+        for(String string:names){
+            for(ExcelHeader excelHeader:headers){
+                if(excelHeader.getTitle().equals(string)){
+                    list.add(getMethodName(excelHeader));
+                }
+            }
+        }
+        return list;
+    }
+
+    /**
      * 根据标题获取相应的方法名称
      * @param eh
      * @return
@@ -174,29 +198,71 @@ public class ExcelUtil {
     }
 
 
-
-    public void  readExcel(String filePath, InputStream inp) throws IOException {
-        Workbook wb;
-        if (filePath.endsWith(".xls")) {
-            wb = new HSSFWorkbook(inp);
-        } else if (filePath.endsWith(".xlsx")) {
-            wb = new XSSFWorkbook(inp);
-        } else {
-            wb = StreamingReader.builder()
-                    .rowCacheSize(1000)    // number of rows to keep in memory (defaults to 10)
-                    .bufferSize(4096)     // buffer size to use when reading InputStream to file (defaults to 1024)
-                    .open(inp);            // InputStream or File for XLSX file (required)
-        }
-        Sheet sheet = wb.getSheetAt(0);
-        //遍历所有的行
-        for (Row row : sheet) {
-            System.out.println("开始遍历第" + row.getRowNum() + "行数据：");
-            //遍历所有的列
-            for (Cell cell : row) {
-                System.out.print(cell.getStringCellValue() + " ");
+    /**
+     * 根据文件路径读取文件,并返回一个实体类对象的集合
+     * @param path
+     * @param clazz
+     * @throws IOException
+     */
+    public List<Object>  readExcel(String path, Class clazz) {
+        List<Object> result = new LinkedList<>();
+        String fileType = path.substring(path.lastIndexOf(".") + 1);
+        List<List<String>> lists = new ArrayList<List<String>>();
+        InputStream is = null;
+        try {
+            //区分网络路径还是本地路径  前提是所提供的path路径正常
+            if(path.toLowerCase().contains("http")){
+                URL url = new URL(path);
+                is = new BufferedInputStream(url.openStream());
+            }else{
+                is =  new FileInputStream(path);
             }
-            System.out.println(" ");
+
+            //获取工作薄
+            Workbook wb = null;
+            if (fileType.equals("xls")) {
+                wb = new HSSFWorkbook(is);
+            } else if (fileType.equals("xlsx")) {
+                wb = new XSSFWorkbook(is);
+            }
+
+            //读取第一个工作页sheet
+            Sheet sheet = wb.getSheetAt(0);
+            //第一行为标题
+            Row header = sheet.getRow(0);
+            List<String> list = new ArrayList<>();
+            for (Cell cell : header) {
+                list.add(cell.getStringCellValue());
+            }
+            //获取到对应的类的属性名称
+            List<String> names = getHeaderListByName(clazz,list);
+
+            for(int i = 1;i < sheet.getLastRowNum()+1;i++){
+                Object clz = clazz.newInstance();
+                Row row = sheet.getRow(i);
+                //遍历所有的列
+                for(int j = 0;j < row.getLastCellNum();j++){
+                    Cell cell = row.getCell(j);
+                    BeanUtils.setProperty(clz,names.get(j),cell.getStringCellValue());
+                }
+                result.add(clz);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        } catch (InstantiationException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (is != null) is.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
+        return result;
     }
 
 }

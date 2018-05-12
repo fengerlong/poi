@@ -4,6 +4,9 @@ import com.poi.utils.poidemo.interfaces.ExcelResources;
 
 import java.util.Date;
 
+/**
+ * 导出所对应的类
+ */
 public class WebDto {
 
     //网站名称
@@ -46,7 +49,7 @@ public class WebDto {
                 '}';
     }
 
-    @ExcelResources(title="网站名称",order=1)
+    @ExcelResources(title="网站名称",order=2)
     public String getName() {
         return name;
     }
@@ -55,7 +58,7 @@ public class WebDto {
         this.name = name;
     }
 
-    @ExcelResources(title="网址",order=2)
+    @ExcelResources(title="网址",order=1)
     public String getUrl() {
         return url;
     }
